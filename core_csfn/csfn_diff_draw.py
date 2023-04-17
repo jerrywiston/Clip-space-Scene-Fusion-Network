@@ -32,8 +32,8 @@ class CSFN(nn.Module):
         kl_loss, rec_loss, draw_loss, diff_loss, x_rec = self.renderer.get_loss(xq, view_cell_q_layers)
         return kl_loss, rec_loss, draw_loss, diff_loss, x_rec
     
-    def sample(self, xo, pose_o, pose_q):
+    def sample(self, xo, pose_o, pose_q, render_layers=-1):
         view_cell_o = self.encoder(xo)
         view_cell_q_layers = self.cstrn(view_cell_o, pose_o, pose_q)
-        x_samp_draw, x_samp_diff = self.renderer.sample(view_cell_q_layers)
+        x_samp_draw, x_samp_diff = self.renderer.sample(view_cell_q_layers, render_layers)
         return x_samp_draw, x_samp_diff

@@ -122,12 +122,46 @@ class DiffusionModel(nn.Module):
             post_sigma = math.sqrt(self.beta(t)) * z
             x = pre_scale * (x - e_scale * e_hat) + post_sigma
             return x
+    
+    def denoise_sample_ddim(self, x, xd, c, t, samp_step, eta=0.0):
+        """
+        Corresponds to the inner loop of Algorithm 2 from (Ho et al., 2020).
+        """
+        with torch.no_grad():
+            if t > 1:
+                z = torch.randn(x.shape).to(self.device)
+            else:
+                z = 0
+            e_hat = self.forward(x, xd, c, t.view(1, 1).repeat(x.shape[0], 1))
+            if t-1 == 0:
+                alpha_past = 1
+            else:
+                alpha_past = self.alpha_bar(t-samp_step)
+            alpha = self.alpha_bar(t)
+            term1 = math.sqrt(alpha_past) * (x-math.sqrt(1-alpha)*e_hat) / math.sqrt(alpha)
+            sigma = eta*math.sqrt((1-alpha_past)/(1-alpha))*math.sqrt(1-alpha/alpha_past)
+            term2 = math.sqrt(1-alpha_past-sigma**2) * e_hat
+            term3 = sigma * z
+            x = term1 + term2 + term3
+            return x
 
     def image_sample(self, xd, c, batch_size):
         x = torch.randn((batch_size, 3, 64, 64)).to(self.device)
-        sample_steps = torch.arange(self.t_range-1, 0, -1).to(self.device)
+        sample_steps = torch.arange(self.t_range-1, 1, -1).to(self.device)
         for t in sample_steps:
             x = self.denoise_sample(x, xd, c, t)
+        #x = (x.clamp(-1,1) + 1) / 2
+        x = x.clamp(0,1)
+        return x
+
+    def image_sample_ddim(self, xd, c, batch_size):
+        x = torch.randn((batch_size, 3, 64, 64)).to(self.device)
+        samp_step = 10
+        sample_steps = torch.arange(self.t_range-1, 0, -samp_step).to(self.device)
+        print(sample_steps)
+        for t in sample_steps:
+            print(t)
+            x = self.denoise_sample_ddim(x, xd, c, t, samp_step)
         #x = (x.clamp(-1,1) + 1) / 2
         x = x.clamp(0,1)
         return x

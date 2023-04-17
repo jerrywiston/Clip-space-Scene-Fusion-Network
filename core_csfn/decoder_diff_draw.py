@@ -24,8 +24,11 @@ class Renderer(nn.Module):
         self.dec_draw = conv_draw.GeneratorNetwork(x_dim=3, r_dim=cell_size, L=6, scale=4, share=True).to(device)
         self.dec_diff = model.DiffusionModel(64*64, diffusion_steps, 3, cell_size, device).to(device)
 
-    def draw_canvas(self, view_cell_q):
-        depth_size = view_cell_q.shape[2]
+    def draw_canvas(self, view_cell_q, render_layers=-1):
+        if render_layers == -1:
+            depth_size = view_cell_q.shape[2]
+        else:
+            depth_size = render_layers
         vshape = view_cell_q.shape
         canvas = view_cell_q[:,:,0,:,:]
         for i in range(1,depth_size):
@@ -48,9 +51,9 @@ class Renderer(nn.Module):
     
         return kl_loss, rec_loss, draw_loss, diff_loss, x_rec
 
-    def sample(self, view_cell_q):
+    def sample(self, view_cell_q, render_layers=-1):
         # view_cell_q: (b,c,d,h,w)
-        canvas = self.draw_canvas(view_cell_q)
+        canvas = self.draw_canvas(view_cell_q, render_layers)
         x_samp_draw = self.dec_draw.sample((64,64), canvas)
         x_samp_diff = self.dec_diff.image_sample(x_samp_draw, canvas, canvas.shape[0])
         return x_samp_draw, x_samp_diff
