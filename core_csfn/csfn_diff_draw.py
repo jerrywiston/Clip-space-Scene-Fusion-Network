@@ -24,7 +24,7 @@ class CSFN(nn.Module):
         # Build Modules
         self.encoder = encoder.EncoderNetworkRes(csize=cell_size).to(device)
         self.cstrn = cstrn.CSTRN(view_size, depth_size, pose_size, emb_size, cell_size, fusion_type)
-        self.renderer = decoder.Renderer(cell_size=cell_size, z_dim=64).to(device)
+        self.renderer = decoder.Renderer(cell_size=cell_size, z_dim=64, img_size=view_size[0]*4).to(device)
 
     def forward(self, xo, xq, pose_o, pose_q):
         view_cell_o = self.encoder(xo)

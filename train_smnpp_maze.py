@@ -14,7 +14,7 @@ import configparser
 import config_handle
 import utils
 from core_smnpp.smn import SMN
-from maze3d.gen_maze_dataset import gen_dataset
+from maze3d.gen_maze_dataset_new import gen_dataset
 from maze3d import maze
 from maze3d import maze_env
 
@@ -208,7 +208,7 @@ steps = 0
 epochs = 0
 eval_step = 1000
 zfill_size = len(str(args.total_steps))
-batch_size = 16
+batch_size = 32
 gen_data_size = 100
 gen_dataset_iter = 1000
 samp_field = 3.0
@@ -218,7 +218,6 @@ while(True):
         print("Generate Dataset ...")
         color_data, depth_data, pose_data = \
             gen_dataset(env, gen_data_size, samp_range=samp_field, samp_size=2*int(args.max_obs_size))
-        print(pose_data.shape)
         color_data = color_data.astype(float) / 255.
         print("\nDone")
 

@@ -14,12 +14,10 @@ import configparser
 import config_handle
 import utils
 from core_csfn.csfn_diff_draw import CSFN
-from maze3d.gen_maze_dataset_new import gen_dataset
-from maze3d import maze
-from maze3d import maze_env
+from dataset_replica import load_replica
 
 ############ Utility Functions ############
-def get_batch(color, pose, obs_size=12, batch_size=32, to_torch=True):
+def get_batch(color, pose, obs_size=12, batch_size=32, device="cuda"):
     img_obs = None
     pose_obs = None
     img_query = None
@@ -30,26 +28,20 @@ def get_batch(color, pose, obs_size=12, batch_size=32, to_torch=True):
         query_id = np.random.randint(0, color.shape[1])
         
         if img_obs is None:
-            img_obs = color[batch_id:batch_id+1, obs_id].reshape(-1,color.shape[-3], color.shape[-2], color.shape[-1])
-            pose_obs = pose[batch_id:batch_id+1, obs_id].reshape(-1,pose.shape[-1])
-            img_query = color[batch_id:batch_id+1, query_id]
-            pose_query = pose[batch_id:batch_id+1, query_id]
+            img_obs = color[batch_id:batch_id+1, obs_id]
+            pose_obs = pose[batch_id:batch_id+1, obs_id]
+            img_query = color[batch_id:batch_id+1, query_id:query_id+1]
+            pose_query = pose[batch_id:batch_id+1, query_id:query_id+1]
         else:
-            img_obs = np.concatenate([img_obs, color[batch_id:batch_id+1, obs_id].reshape(-1,color.shape[-3], color.shape[-2], color.shape[-1])], 0)
-            pose_obs = np.concatenate([pose_obs, pose[batch_id:batch_id+1, obs_id].reshape(-1,pose.shape[-1])], 0)
-            img_query = np.concatenate([img_query, color[batch_id:batch_id+1, query_id]], 0)
-            pose_query = np.concatenate([pose_query, pose[batch_id:batch_id+1, query_id]], 0)
+            img_obs = torch.cat([img_obs, color[batch_id:batch_id+1, obs_id]], 0)
+            pose_obs = torch.cat([pose_obs, pose[batch_id:batch_id+1, obs_id]], 0)
+            img_query = torch.cat([img_query, color[batch_id:batch_id+1, query_id:query_id+1]], 0)
+            pose_query = torch.cat([pose_query, pose[batch_id:batch_id+1, query_id:query_id+1]], 0)
     
-    if to_torch:
-        import torch
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        img_obs = torch.FloatTensor(img_obs).permute(0,3,1,2).to(device)
-        pose_obs = torch.FloatTensor(pose_obs).to(device)
-        img_query = torch.FloatTensor(img_query).permute(0,3,1,2).to(device)
-        pose_query = torch.FloatTensor(pose_query).to(device)
-
-        pose_obs = pose_obs.reshape(-1, obs_size, pose_obs.shape[1])
-        pose_query = pose_query.reshape(-1, 1, pose_query.shape[1])
+    img_obs = img_obs.reshape([-1, img_obs.shape[-3], img_obs.shape[-2], img_obs.shape[-1]]).to(device) 
+    pose_obs = pose_obs.to(device)  
+    img_query = img_query.reshape([-1, img_query.shape[-3], img_query.shape[-2], img_query.shape[-1]]).to(device) 
+    pose_query = pose_query.to(device) 
 
     return img_obs, pose_obs, img_query, pose_query
 
@@ -59,10 +51,11 @@ def draw_query_maze(net, color, pose, obs_size=3, row_size=32, gen_size=10, shuf
     img_list = []
     for it in range(gen_size):
         img_row = []
-        x_obs, v_obs, x_query_gt, v_query = get_batch(color, pose, obs_size, row_size)
+        x_obs, v_obs, x_query_gt, v_query = get_batch(color, pose, obs_size, row_size, device)
         img_size = (x_obs.shape[-2], x_obs.shape[-1])
         vsize = v_obs.shape[-1]
         with torch.no_grad():
+            #print(x_obs.shape, v_obs.shape, v_query.shape)
             x_samp_draw, x_samp_diff = net.sample(x_obs, v_obs, v_query)
             x_samp_draw = x_samp_draw.detach().permute(0,2,3,1).cpu().numpy()
             x_samp_diff = x_samp_diff.detach().permute(0,2,3,1).cpu().numpy()
@@ -86,7 +79,7 @@ def draw_query_maze(net, color, pose, obs_size=3, row_size=32, gen_size=10, shuf
                 img_row.append(np.ones([border[2]*bscale,x_np.shape[1],3]))
         
         img_row = np.concatenate(img_row, 0) * 255
-        #img_row = cv2.cvtColor(img_row.astype(np.uint8), cv2.COLOR_BGR2RGB)
+        img_row = cv2.cvtColor(img_row.astype(np.uint8), cv2.COLOR_BGR2RGB)
         img_list.append(img_row.astype(np.uint8))
         fill_size = len(str(gen_size))
         print("\rProgress: "+str(it+1).zfill(fill_size)+"/"+str(gen_size), end="")
@@ -97,7 +90,7 @@ def draw_query_maze_layer(net, color, pose, obs_size=3, row_size=32, gen_size=10
     img_list = []
     for it in range(gen_size):
         img_row = []
-        x_obs, v_obs, x_query_gt, v_query = get_batch(color, pose, obs_size, row_size)
+        x_obs, v_obs, x_query_gt, v_query = get_batch(color, pose, obs_size, row_size, device)
         img_size = (x_obs.shape[-2], x_obs.shape[-1])
         vsize = v_obs.shape[-1]
         with torch.no_grad():
@@ -129,7 +122,7 @@ def draw_query_maze_layer(net, color, pose, obs_size=3, row_size=32, gen_size=10
                 img_row.append(np.ones([border[2]*bscale,x_np.shape[1],3]))
         
         img_row = np.concatenate(img_row, 0) * 255
-        #img_row = cv2.cvtColor(img_row.astype(np.uint8), cv2.COLOR_BGR2RGB)
+        img_row = cv2.cvtColor(img_row.astype(np.uint8), cv2.COLOR_BGR2RGB)
         img_list.append(img_row.astype(np.uint8))
         fill_size = len(str(gen_size))
         print("\rProgress: "+str(it+1).zfill(fill_size)+"/"+str(gen_size), end="")
@@ -145,7 +138,7 @@ def eval_maze(net, color, pose, obs_size=3, max_batch=1000, render_layers=-1, sh
     ce_record = []
     for it in range(max_batch):
         img_row = []
-        x_obs, v_obs, x_query_gt, v_query = get_batch(color, pose, obs_size, 32)
+        x_obs, v_obs, x_query_gt, v_query = get_batch(color, pose, obs_size, 32, device)
         img_size = (x_obs.shape[-2], x_obs.shape[-1])
         vsize = v_obs.shape[-1]
         with torch.no_grad():
@@ -171,18 +164,14 @@ def eval_maze(net, color, pose, obs_size=3, max_batch=1000, render_layers=-1, sh
     return {"rmse":[float(rmse_mean), float(rmse_std)],
             "mae" :[float(mae_mean), float(mae_std)],}
 
-def eval(env, net, img_path="experiments/eval/", row_size=10):
+def eval(color_data_test, pose_data_test, net, img_path="experiments/eval/", row_size=10):
     ##
     max_obs_size = 16
     obs_size = 10
     gen_size = 10
     ##
     print("------------------------------")
-    print("Generate Test Data ...")
-    color_data_test, depth_data_test, pose_data_test = \
-        gen_dataset(env, gen_size, samp_range=samp_field, samp_size=2*max_obs_size)
-    color_data_test = color_data_test.astype(float) / 255.
-    print("Done!!")
+
 
     # Test
     print("Generate testing image ...")
@@ -196,8 +185,8 @@ parser.add_argument('--exp_name', nargs='?', type=str, default="maze" ,help='Exp
 
 args = lambda: None
 args.exp_name = parser.parse_args().exp_name
-args.img_size = (64, 64)
-args.view_size = (16, 16)
+args.img_size = (64, 64)#(128, 128)
+args.view_size = (16, 16)#(32, 32)
 args.depth_size = 6
 args.pose_size = 12
 args.emb_size = 16
@@ -205,8 +194,8 @@ args.cell_size = 128
 args.fusion_type = "ocm"
 args.loss_type = "MSE"
 args.total_steps = 1600000
-args.min_obs_size = 4
-args.max_obs_size = 16
+args.min_obs_size = 16
+args.max_obs_size = 24
 
 # Print Training Information
 print("Experiment Name: %s"%(args.exp_name))
@@ -217,9 +206,10 @@ print("Embedding Size: %d"%(args.emb_size))
 print("Celle Size: %d"%(args.cell_size))
 print("Fusion Type: %s"%(args.fusion_type))
 
-############ Data Gen ############
-maze_obj = maze.MazeGridRandom2(obj_prob=0.3)
-env = maze_env.MazeBaseEnv(maze_obj, render_res=args.img_size, fov=80*np.pi/180)
+print("Load ReplicA Dataset ...")
+color_data_train, pose_data_train = load_replica("E:/ml-gsn/data/replica_all/train", args.img_size)
+
+print("\nDone")
 
 ############ Create Folder ############
 now = datetime.datetime.now()
@@ -261,7 +251,7 @@ steps = 0
 epochs = 0
 eval_step = 1000
 zfill_size = len(str(args.total_steps))
-batch_size = 32
+batch_size = 16
 gen_data_size = 100
 gen_dataset_iter = 1000
 samp_field = 3.0
@@ -269,18 +259,11 @@ train_diff_iter = 0#10000
 test = False
 
 if not test:
-    while(True):    
-        if steps % gen_dataset_iter == 0:
-            print("Generate Dataset ...")
-            color_data, depth_data, pose_data = \
-                gen_dataset(env, gen_data_size, samp_range=samp_field, samp_size=2*int(args.max_obs_size))
-            color_data = color_data.astype(float) / 255.
-            print("\nDone")
-
+    while(True):   
         # ------------ Get data (Random Observation) ------------
         obs_size = np.random.randint(args.min_obs_size,args.max_obs_size)
-        x_obs, v_obs, x_query_gt, v_query = get_batch(color_data, pose_data, obs_size, batch_size)
-        #print(v_obs.shape, v_query.shape)
+        x_obs, v_obs, x_query_gt, v_query = get_batch(color_data_train, pose_data_train, obs_size, batch_size, device)
+        
         # ------------ Forward ------------
         net.zero_grad()
         kl_loss, rec_loss, draw_loss, diff_loss, x_rec = net(x_obs, x_query_gt, v_obs, v_query)
@@ -308,14 +291,12 @@ if not test:
             ##
             print("------------------------------")
             print("Generate Test Data ...")
-            color_data_test, depth_data_test, pose_data_test = \
-                gen_dataset(env, gen_size*3, samp_range=samp_field, samp_size=2*int(args.max_obs_size))
-            color_data_test = color_data_test.astype(float) / 255.
+            color_data_test, pose_data_test = load_replica("E:/ml-gsn/data/replica_all/test", args.img_size)
             print("Done!!")
             # Train
             print("Generate image ...")
             fname = img_path+str(int(steps/eval_step)).zfill(4)+"_train.png"
-            canvas = draw_query_maze(net, color_data, pose_data, obs_size=obs_size, row_size=5, gen_size=1, shuffle=True)[0]
+            canvas = draw_query_maze(net, color_data_train, pose_data_train, obs_size=obs_size, row_size=5, gen_size=1, shuffle=True)[0]
             cv2.imwrite(fname, canvas)
             # Test
             print("Generate testing image ...")
@@ -359,4 +340,4 @@ if not test:
             break
 else:
     net.load_state_dict(torch.load(args.exp_name))
-    eval(env, net)
+    #eval(color_data_test, pose_data_test, net)

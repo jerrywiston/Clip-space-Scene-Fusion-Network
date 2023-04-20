@@ -10,7 +10,7 @@ from diffusion import model_refine as model
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Renderer(nn.Module):
-    def __init__(self, cell_size, z_dim):
+    def __init__(self, cell_size, z_dim, img_size=64):
         super(Renderer, self).__init__()
         self.cell_size = cell_size
         self.z_dim = z_dim
@@ -22,7 +22,7 @@ class Renderer(nn.Module):
         )
         diffusion_steps = 1000
         self.dec_draw = conv_draw.GeneratorNetwork(x_dim=3, r_dim=cell_size, L=6, scale=4, share=True).to(device)
-        self.dec_diff = model.DiffusionModel(64*64, diffusion_steps, 3, cell_size, device).to(device)
+        self.dec_diff = model.DiffusionModel(img_size*img_size, diffusion_steps, 3, cell_size, device).to(device)
 
     def draw_canvas(self, view_cell_q, render_layers=-1):
         if render_layers == -1:
@@ -53,7 +53,9 @@ class Renderer(nn.Module):
 
     def sample(self, view_cell_q, render_layers=-1):
         # view_cell_q: (b,c,d,h,w)
+        img_size = view_cell_q.shape[-1]*4
         canvas = self.draw_canvas(view_cell_q, render_layers)
-        x_samp_draw = self.dec_draw.sample((64,64), canvas)
+        x_samp_draw = self.dec_draw.sample((img_size,img_size), canvas)
+        #print(x_samp_draw.shape, canvas.shape)
         x_samp_diff = self.dec_diff.image_sample(x_samp_draw, canvas, canvas.shape[0])
         return x_samp_draw, x_samp_diff

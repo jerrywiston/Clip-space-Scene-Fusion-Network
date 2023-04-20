@@ -21,7 +21,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Deterministic
 class SMN(nn.Module):
-    def __init__(self, n_wrd_cells=2000, view_size=(16,16), csize=128, ch=64, vsize=7, draw_layers=6, down_size=4, wcode_size=3, share_core=False):
+    def __init__(self, n_wrd_cells=2000, view_size=(16,16), csize=128, ch=64, vsize=12, draw_layers=6, down_size=4, wcode_size=3, use_diff=False, share_core=False):
         super(SMN, self).__init__()
         self.n_wrd_cells = n_wrd_cells
         self.view_size = view_size
@@ -31,6 +31,7 @@ class SMN(nn.Module):
         self.down_size = down_size
         self.draw_layers = draw_layers
         self.wcode_size = wcode_size # Must be 3 for "trans" version.
+        self.use_diff = use_diff
 
         self.encoder = encoder.EncoderNetworkRes(ch, csize, down_size).to(device)
         self.strn = smc.MemoryController(n_wrd_cells, view_size=view_size, vsize=vsize, csize=csize).to(device)
@@ -63,7 +64,10 @@ class SMN(nn.Module):
         view_cell_query = self.strn.query(scene_cell, vq, self.wcode)
         view_cell_query = torch.sigmoid(view_cell_query) ###
         x_query, kl = self.generator(xq, view_cell_query)
-        diff_loss = self.dec_diff.get_loss(xq, x_query.detach(), view_cell_query)
+        if self.use_diff:
+            diff_loss = self.dec_diff.get_loss(xq, x_query.detach(), view_cell_query)
+        else:
+            diff_loss = torch.tensor(0.)
         return x_query, kl, diff_loss
 
     def step_query_view_sample(self, scene_cell, vq):
@@ -71,7 +75,10 @@ class SMN(nn.Module):
         view_cell_query = torch.sigmoid(view_cell_query) ###
         sample_size = (self.view_size[0]*self.down_size, self.view_size[1]*self.down_size)
         x_query = self.generator.sample(sample_size, view_cell_query)
-        x_diff = self.dec_diff.image_sample(x_query, view_cell_query, view_cell_query.shape[0])
+        if self.use_diff:
+            x_diff = self.dec_diff.image_sample(x_query, view_cell_query, view_cell_query.shape[0])
+        else:
+            x_diff = x_query
         return x_query, x_diff
     
     def visualize_routing(self, view_cell, v, vq, view_size=None):
@@ -86,8 +93,12 @@ class SMN(nn.Module):
         # Move to the coordinate of query view
         with torch.no_grad():
             vq_tile = vq.unsqueeze(1).repeat(1,n_obs,1).reshape(v.shape[0],-1)
-            v[:,0:3] = v[:,0:3] - vq_tile[:,0:3]
-            vq[:,0:3] = 0
+            v[:,3] = v[:,3] - vq_tile[:,3]
+            v[:,7] = v[:,7] - vq_tile[:,7]
+            v[:,11] = v[:,11] - vq_tile[:,11]
+            vq[:,3] = 0
+            vq[:,7] = 0
+            vq[:,11] = 0
 
         # Observation Encode
         wrd_cell = self.step_observation_encode(x, v)
@@ -98,12 +109,14 @@ class SMN(nn.Module):
         return x_query, kl, diff_loss
 
     def sample(self, x, v, vq, n_obs=3, steps=None):
-        # Move to the coordinate of query view
         with torch.no_grad():
             vq_tile = vq.unsqueeze(1).repeat(1,n_obs,1).reshape(v.shape[0],-1)
-            v[:,0:3] = v[:,0:3] - vq_tile[:,0:3]
-            vq[:,0:3] = 0
-            
+            v[:,3] = v[:,3] - vq_tile[:,3]
+            v[:,7] = v[:,7] - vq_tile[:,7]
+            v[:,11] = v[:,11] - vq_tile[:,11]
+            vq[:,3] = 0
+            vq[:,7] = 0
+            vq[:,11] = 0
         # Observation Encode
         wrd_cell = self.step_observation_encode(x, v)
         # Scene Fusion

@@ -7,7 +7,7 @@ from blurPooling import BlurPool2d
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class MemoryController(nn.Module):
-    def __init__(self, n_wrd_cells, view_size=(16,16), vsize=7, wcode_size=3, emb_size=32, csize=128):
+    def __init__(self, n_wrd_cells, view_size=(16,16), vsize=12, wcode_size=3, emb_size=32, csize=128):
         super(MemoryController, self).__init__()
         self.n_wrd_cells = n_wrd_cells
         self.view_size = view_size
@@ -33,15 +33,9 @@ class MemoryController(nn.Module):
     def wcode2cam(self, v, wcode):
         with torch.no_grad():
             # Transformation
-            vzeros = torch.zeros_like(v[:,0:1])
-            vones = torch.ones_like(v[:,0:1])
-            v_mtx = torch.cat( [\
-                v[:,4:5], -v[:,3:4], vzeros, v[:,0:1], \
-                v[:,3:4], v[:,4:5], vzeros, v[:,1:2], \
-                vzeros, vzeros, vones , vzeros,
-                vzeros, vzeros, vzeros, vones ], 1)
-
-            v_mtx = v_mtx.reshape(-1, 4, 4)
+            vec_affine = torch.tensor([0.,0.,0.,1.]).to(device)
+            vec_affine = vec_affine.unsqueeze(0).repeat((v.shape[0],1))
+            v_mtx = torch.cat((v, vec_affine),1).reshape(-1, 4, 4)
             v_mtx_inv = torch.linalg.inv(v_mtx)
             v_mtx_inv_tile = torch.unsqueeze(v_mtx_inv, 1).repeat(1, self.n_wrd_cells, 1, 1)
 

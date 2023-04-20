@@ -146,7 +146,7 @@ class DiffusionModel(nn.Module):
             return x
 
     def image_sample(self, xd, c, batch_size):
-        x = torch.randn((batch_size, 3, 64, 64)).to(self.device)
+        x = torch.randn((batch_size, 3, xd.shape[-2], xd.shape[-1])).to(self.device)
         sample_steps = torch.arange(self.t_range-1, 1, -1).to(self.device)
         for t in sample_steps:
             x = self.denoise_sample(x, xd, c, t)

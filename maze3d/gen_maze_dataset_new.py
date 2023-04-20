@@ -54,9 +54,9 @@ def gen_data_global(env, samp_size, pose_type="tmat" , load_path=None):
             np.sin(info["pose"][2]), np.cos(info["pose"][2]), 0, info["pose"][1],
             0, 0, 1, 0,
             ])
-        if pose_type == "quat":
-            quat = mat2quat(pose)
-            pose = np.array([info["pose"][0], info["pose"][1], 0, quat[0], quat[1], quat[2], quat[3]])
+        #if pose_type == "quat":
+        #    quat = mat2quat(pose)
+        #    pose = np.array([info["pose"][0], info["pose"][1], 0, quat[0], quat[1], quat[2], quat[3]])
 
         pose_list.append(np.expand_dims(pose,0))
 
@@ -68,9 +68,9 @@ def gen_data_global(env, samp_size, pose_type="tmat" , load_path=None):
             np.sin(info["pose"][2]), np.cos(info["pose"][2]), 0, info["pose"][1],
             0, 0, 1, 0,
             ])
-    if pose_type == "quat":
-        quat = mat2quat(pose)
-        pose = np.array([info["pose"][0], info["pose"][1], 0, quat[0], quat[1], quat[2], quat[3]])
+    #if pose_type == "quat":
+    #    quat = mat2quat(pose)
+    #    pose = np.array([info["pose"][0], info["pose"][1], 0, quat[0], quat[1], quat[2], quat[3]])
     pose_list.append(np.expand_dims(pose,0))
 
     color_np = np.concatenate(color_list, 0)
@@ -104,9 +104,9 @@ def gen_data_range(env, samp_range, samp_size, pose_type="tmat", load_path=None)
                     np.sin(info["pose"][2]), np.cos(info["pose"][2]), 0, info["pose"][1],
                     0, 0, 1, 0,
                     ])
-            if pose_type == "quat":
-                quat = mat2quat(pose)
-                pose = np.array([info["pose"][0], info["pose"][1], 0, quat[0], quat[1], quat[2], quat[3]])
+            #if pose_type == "quat":
+            #    quat = mat2quat(pose)
+            #    pose = np.array([info["pose"][0], info["pose"][1], 0, quat[0], quat[1], quat[2], quat[3]])
             pose_list.append(np.expand_dims(pose,0))
             count += 1
             if count >= samp_size:
@@ -118,9 +118,9 @@ def gen_data_range(env, samp_range, samp_size, pose_type="tmat", load_path=None)
                     np.sin(info["pose"][2]), np.cos(info["pose"][2]), 0, info["pose"][1],
                     0, 0, 1, 0,
                     ])
-                if pose_type == "quat":
-                    quat = mat2quat(pose)
-                    pose = np.array([info["pose"][0], info["pose"][1], 0, quat[0], quat[1], quat[2], quat[3]])
+                #if pose_type == "quat":
+                #    quat = mat2quat(pose)
+                #    pose = np.array([info["pose"][0], info["pose"][1], 0, quat[0], quat[1], quat[2], quat[3]])
                 pose_list.append(np.expand_dims(pose,0))
 
                 color_np = np.concatenate(color_list, 0)
