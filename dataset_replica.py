@@ -34,7 +34,7 @@ def read_scene(path, img_size=(128,128)):
     return rgb_tensor_scene, pose_tensor_scene
 
 def load_replica(path, img_size=(128,128), device='cpu'):
-    scene_len = len(os.listdir(path))
+    scene_len = 1#len(os.listdir(path))
     rgb_dataset = []
     pose_dataset = []
     for i in tqdm(range(scene_len)):

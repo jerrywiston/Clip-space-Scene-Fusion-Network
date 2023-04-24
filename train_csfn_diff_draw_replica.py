@@ -166,8 +166,7 @@ def eval_maze(net, color, pose, obs_size=3, max_batch=1000, render_layers=-1, sh
 
 def eval(color_data_test, pose_data_test, net, img_path="experiments/eval/", row_size=10):
     ##
-    max_obs_size = 16
-    obs_size = 10
+    obs_size = 5
     gen_size = 10
     ##
     print("------------------------------")
@@ -176,7 +175,7 @@ def eval(color_data_test, pose_data_test, net, img_path="experiments/eval/", row
     # Test
     print("Generate testing image ...")
     fname = img_path+"test.png"
-    canvas = draw_query_maze_layer(net, color_data_test, pose_data_test, obs_size=obs_size, row_size=row_size, gen_size=1, shuffle=True)[0]
+    canvas = draw_query_maze_layer(net, color_data_test, pose_data_test, obs_size=obs_size, row_size=row_size, gen_size=gen_size, shuffle=True)[0]
     cv2.imwrite(fname, canvas)
 
 ############ Parameter Parsing ############
@@ -194,8 +193,8 @@ args.cell_size = 128
 args.fusion_type = "ocm"
 args.loss_type = "MSE"
 args.total_steps = 1600000
-args.min_obs_size = 16
-args.max_obs_size = 24
+args.min_obs_size = 3
+args.max_obs_size = 10
 
 # Print Training Information
 print("Experiment Name: %s"%(args.exp_name))
@@ -206,8 +205,10 @@ print("Embedding Size: %d"%(args.emb_size))
 print("Celle Size: %d"%(args.cell_size))
 print("Fusion Type: %s"%(args.fusion_type))
 
-print("Load ReplicA Dataset ...")
+print("Load ReplicA Training Dataset ...")
 color_data_train, pose_data_train = load_replica("E:/ml-gsn/data/replica_all/train", args.img_size)
+print("Load ReplicA Testing Dataset ...")
+color_data_test, pose_data_test = load_replica("E:/ml-gsn/data/replica_all/test", args.img_size)
 
 print("\nDone")
 
@@ -251,7 +252,7 @@ steps = 0
 epochs = 0
 eval_step = 1000
 zfill_size = len(str(args.total_steps))
-batch_size = 16
+batch_size = 32
 gen_data_size = 100
 gen_dataset_iter = 1000
 samp_field = 3.0
@@ -290,8 +291,6 @@ if not test:
             gen_size = 5
             ##
             print("------------------------------")
-            print("Generate Test Data ...")
-            color_data_test, pose_data_test = load_replica("E:/ml-gsn/data/replica_all/test", args.img_size)
             print("Done!!")
             # Train
             print("Generate image ...")

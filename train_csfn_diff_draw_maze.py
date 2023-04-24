@@ -205,8 +205,8 @@ args.cell_size = 128
 args.fusion_type = "ocm"
 args.loss_type = "MSE"
 args.total_steps = 1600000
-args.min_obs_size = 4
-args.max_obs_size = 16
+args.min_obs_size = 3#4
+args.max_obs_size = 8#16
 
 # Print Training Information
 print("Experiment Name: %s"%(args.exp_name))
@@ -303,7 +303,7 @@ if not test:
         # ------------ Output Image ------------
         if steps % eval_step == 0:
             ##
-            obs_size = 10
+            obs_size = 5#10
             gen_size = 5
             ##
             print("------------------------------")

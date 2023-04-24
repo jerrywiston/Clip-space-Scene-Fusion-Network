@@ -131,7 +131,7 @@ def gen_data_range(env, samp_range, samp_size, pose_type="tmat", load_path=None)
 def gen_dataset(env, scene_size, samp_range=2, samp_size=16, pose_type="tmat"):
     color_data, depth_data, pose_data = [], [], []
     for i in range(scene_size):
-        print("\r", i+1, "/", scene_size, end="")
+        print("\r", i+1, "/", scene_size, end=" ")
         if samp_range > 0:
             color_np, depth_np, pose_np = gen_data_range(env, samp_range=samp_range, samp_size=samp_size, pose_type=pose_type)
         else:

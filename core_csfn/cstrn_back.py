@@ -4,6 +4,7 @@ import torch.nn as nn
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 use_quaterion = True
+use_pos_encoding = True
 
 # Clip Space Spatial Transformation Routing Network
 class CSTRN(nn.Module):
@@ -17,7 +18,7 @@ class CSTRN(nn.Module):
         self.fusion_type = fusion_type # "ocm"/"sum"/"avg"/"norm"
 
         if use_quaterion:
-            self.pose_size = 7*(6*2+1)
+            self.pose_size = 7
 
         # 2D Observation View Space Embedding Network
         self.emb_net_k = nn.Sequential(
@@ -50,6 +51,10 @@ class CSTRN(nn.Module):
         batch_size = pose_o.shape[0]
         num_obs = pose_o.shape[1]
 
+        if use_quaterion:
+            pose_o_quat = self.mat2quat(pose_o)
+            pose_q_quat = self.mat2quat(pose_q)
+
         # Observation View Space Embedding
         ho = torch.linspace(-1, 1, self.view_size[0])   #(h)
         wo = torch.linspace(-1, 1, self.view_size[1])   #(w)
@@ -66,9 +71,6 @@ class CSTRN(nn.Module):
         code_q = torch.cat((dq_grid.unsqueeze(-1), hq_grid.unsqueeze(-1), wq_grid.unsqueeze(-1)), dim=-1).reshape(-1,3).to(device) #(d*h*w, 3)
         code_q = torch.unsqueeze(code_q, 0).repeat(pose_o.shape[0]*pose_o.shape[1], 1, 1) #(b*n,d*h*w,3)
         pose_trans = self.transform_pose(pose_o, pose_q).reshape(-1,12)    #(b*n,12)
-        if use_quaterion:
-            pose_trans = self.mat2quat(pose_trans)
-            pose_trans = self.positional_encoding(pose_trans)
         pose_trans_tile = pose_trans.unsqueeze(1).repeat(1,self.depth_size*self.view_size[0]*self.view_size[1],1)  #(b*n,d*h*w,12)
         emb_q = self.emb_net_q(torch.cat((pose_trans_tile, code_q), 2))    #(b*n,d*h*w,15)
         mask = self.act_net(emb_q.reshape(-1,self.emb_size)).reshape(-1,self.depth_size*self.view_size[0]*self.view_size[1],1)    #(b*n,d*h*w,1)
@@ -86,6 +88,11 @@ class CSTRN(nn.Module):
     def transform_pose(self, pose_o, pose_q):
         # pose_o: (b,n,12)
         # pose_q: (b,1,12)
+
+        if use_quaterion:
+            pose_o = self.mat2quat(pose_o)
+            pose_q = self.mat2quat(pose_q)
+
         batch_size = pose_o.shape[0]
         num_obs = pose_o.shape[1]
         with torch.no_grad():
@@ -167,48 +174,3 @@ class CSTRN(nn.Module):
             temp.append(q)
         temp = torch.cat(temp, 0).reshape(output_shape)
         return temp
-    
-    # https://colab.research.google.com/drive/1rO8xo0TemN67d4mTpakrKrLp03b9bgCX
-    def positional_encoding(
-        self, tensor, num_encoding_functions=6, include_input=True, log_sampling=True
-    ) -> torch.Tensor:
-
-        #input_shape = tensor_.shape
-        #output_shape = list(torch.tensor(tensor_.shape))
-        #output_shape[-1] = output_shape[-1] * (num_encoding_functions+1)
-        #tensor = tensor_.reshape(-1,input_shape[-1])
-        #print(input_shape, output_shape)
-
-        # TESTED
-        # Trivially, the input tensor is added to the positional encoding.
-        encoding = [tensor] if include_input else []
-        # Now, encode the input using a set of high-frequency functions and append the
-        # resulting values to the encoding.
-        frequency_bands = None
-        if log_sampling:
-            frequency_bands = 2.0 ** torch.linspace(
-                    0.0,
-                    num_encoding_functions - 1,
-                    num_encoding_functions,
-                    dtype=tensor.dtype,
-                    device=tensor.device,
-                )
-        else:
-            frequency_bands = torch.linspace(
-                2.0 ** 0.0,
-                2.0 ** (num_encoding_functions - 1),
-                num_encoding_functions,
-                dtype=tensor.dtype,
-                device=tensor.device,
-            )
-
-        for freq in frequency_bands:
-            for func in [torch.sin, torch.cos]:
-                encoding.append(func(tensor * freq))
-
-        # Special case, for no positional encoding
-        if len(encoding) == 1:
-            return encoding[0]
-        else:
-            return torch.cat(encoding, dim=-1)
-        
