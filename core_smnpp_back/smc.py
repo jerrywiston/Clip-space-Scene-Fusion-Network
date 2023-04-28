@@ -7,11 +7,10 @@ from blurPooling import BlurPool2d
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class MemoryController(nn.Module):
-    def __init__(self, n_wrd_cells, view_size=(16,16), depth_size=6, vsize=12, emb_size=32, csize=128, use_pos_encoding=True):
+    def __init__(self, n_wrd_cells, view_size=(16,16), vsize=12, emb_size=32, csize=128, use_pos_encoding=True):
         super(MemoryController, self).__init__()
         self.n_wrd_cells = n_wrd_cells
         self.view_size = view_size
-        self.depth_size = depth_size
         self.vsize = vsize
         self.emb_size = emb_size
         self.csize = csize
@@ -30,23 +29,16 @@ class MemoryController(nn.Module):
         # View Space Embedding Network
         if use_pos_encoding:
             self.vse = nn.Sequential(
-                nn.Linear(3*(6*2+1), 128),
+                nn.Linear(2*(6*2+1), 128),
                 nn.ReLU(inplace=True),
                 nn.Linear(128, emb_size)
             )
         else:
             self.vse = nn.Sequential(
-                nn.Linear(3, 128),
+                nn.Linear(2, 128),
                 nn.ReLU(inplace=True),
                 nn.Linear(128, emb_size)
             )
-        
-        self.mask_cnn = nn.Sequential(
-            Conv2d(csize, 64, 3, stride=1),
-            nn.ReLU(),
-            Conv2d(64, 1, 3, stride=1),
-            nn.Sigmoid(),
-        )
 
     def wcode2cam(self, v, wcode):
         #with torch.no_grad():
@@ -81,10 +73,8 @@ class MemoryController(nn.Module):
         # View Space Embedding
         x = torch.linspace(-1, 1, view_size[0])
         y = torch.linspace(-1, 1, view_size[1])
-        d = torch.linspace(0, 1, self.depth_size)
-        x_grid, y_grid, d_grid = torch.meshgrid(x, y, d, indexing="ij")
-        vcode = torch.cat((torch.unsqueeze(x_grid, 0), torch.unsqueeze(y_grid, 0), torch.unsqueeze(d_grid, 0)), \
-                          dim=0).reshape(3,-1).permute(1,0).to(device) #(16*16*6, 3)
+        x_grid, y_grid = torch.meshgrid(x, y, indexing="ij")
+        vcode = torch.cat((torch.unsqueeze(x_grid, 0), torch.unsqueeze(y_grid, 0)), dim=0).reshape(2,-1).permute(1,0).to(device) #(16*16, 2)
         if self.use_pos_encoding:
             vcode = self.positional_encoding(vcode)
         vs_embedding = self.vse(vcode) #(256, 128)
@@ -110,7 +100,6 @@ class MemoryController(nn.Module):
         relation, activation = self.transform(wcode_batch_trans, view_size=view_size)
 
         distribution = torch.softmax(relation, 2)
-        distribution = distribution.reshape(distribution.shape[0], distribution.shape[1], -1, self.depth_size).sum(3)
         route = distribution * activation   # (-1, n_wrd_cells, n_view_cells)
         wrd_cell = torch.bmm(view_cell, route.permute(0,2,1))
 
@@ -131,20 +120,8 @@ class MemoryController(nn.Module):
 
         distribution = torch.softmax(relation, 1)
         route = distribution * activation   # (-1, n_wrd_cells, n_view_cells)
-        query_view_cell = torch.bmm(wrd_cell, route).reshape(-1, self.csize, view_size[0], view_size[1], self.depth_size)
-        query_view_cell = self.draw_canvas(query_view_cell)
+        query_view_cell = torch.bmm(wrd_cell, route).reshape(-1, self.csize, view_size[0], view_size[1])
         return query_view_cell
-    
-    def draw_canvas(self, query_view_cell, render_layers=-1):
-        if render_layers == -1:
-            depth_size = query_view_cell.shape[-1]
-        else:
-            depth_size = render_layers
-        canvas = query_view_cell[:,:,:,:,0]
-        for i in range(1,depth_size):
-            mask = self.mask_cnn(canvas)
-            canvas = mask*query_view_cell[:,:,:,:,i] + (1-mask)*canvas
-        return canvas
 
     # https://colab.research.google.com/drive/1rO8xo0TemN67d4mTpakrKrLp03b9bgCX
     def positional_encoding(

@@ -208,7 +208,7 @@ steps = 0
 epochs = 0
 eval_step = 1000
 zfill_size = len(str(args.total_steps))
-batch_size = 32
+batch_size = 8
 gen_data_size = 100
 gen_dataset_iter = 1000
 samp_field = 3.0
@@ -247,7 +247,7 @@ while(True):
     # ------------ Print Result ------------
     if steps % 100 == 0:
         print("[Ep %s/%s] loss_q: %f| lh_q: %f| kl_q: %f| diff: %f"%(str(steps), str(args.total_steps), rec[0], rec[1], rec[2], rec[3]))
-
+        print("Scale:", torch.exp(net.wscale))
     # ------------ Output Image ------------
     if steps % eval_step == 0:
         ##

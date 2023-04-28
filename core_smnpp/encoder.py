@@ -29,63 +29,6 @@ class EncoderNetworkLight(nn.Module):
         out = self.net(x)
         return out
 
-class EncoderNetworkTower(nn.Module):
-    def __init__(self, csize=64):
-        super(EncoderNetworkTower, self).__init__()
-        self.csize = 64
-        self.conv1 = nn.Conv2d(3, 256, kernel_size=2, stride=2)
-        self.conv2 = nn.Conv2d(256, 256, kernel_size=2, stride=2)
-        self.conv3 = nn.Conv2d(256, 128, kernel_size=3, stride=1, padding=1)
-        self.conv4 = nn.Conv2d(128, 256, kernel_size=2, stride=2)
-        self.conv5 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
-        self.conv6 = nn.Conv2d(256, 128, kernel_size=3, stride=1, padding=1)
-        self.conv7 = nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1)
-        self.conv8 = nn.Conv2d(256, csize, kernel_size=1, stride=1)
-
-    def forward(self, x):
-        skip_in  = F.relu(self.conv1(x))
-        skip_out = F.relu(self.conv2(skip_in))
-
-        r = F.relu(self.conv3(skip_in))
-        skip_in = F.relu(self.conv4(r)) + skip_out
-        skip_out  = F.relu(self.conv5(skip_in))
-
-        r = F.relu(self.conv6(skip_in))
-        r = F.relu(self.conv7(r)) + skip_out
-        r = F.relu(self.conv8(r))
-        return r
-
-class EncoderNetworkTowerBN(nn.Module):
-    def __init__(self, csize=64):
-        super(EncoderNetworkTowerBN, self).__init__()
-        self.conv1 = nn.Conv2d(3, 256, kernel_size=2, stride=2)
-        self.conv2 = nn.Conv2d(256, 256, kernel_size=2, stride=2)
-        self.bn2 = nn.BatchNorm2d(256)
-        self.conv3 = nn.Conv2d(256, 128, kernel_size=3, stride=1, padding=1)
-        self.bn3 = nn.BatchNorm2d(128)
-        self.conv4 = nn.Conv2d(128, 256, kernel_size=2, stride=2)
-        self.bn4 = nn.BatchNorm2d(256)
-        self.conv5 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
-        self.bn5 = nn.BatchNorm2d(256)
-        self.conv6 = nn.Conv2d(256, 128, kernel_size=3, stride=1, padding=1)
-        self.bn6 = nn.BatchNorm2d(128)
-        self.conv7 = nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1)
-        self.bn7 = nn.BatchNorm2d(csize)
-        self.conv8 = nn.Conv2d(256, csize, kernel_size=1, stride=1)
-
-    def forward(self, x):
-        skip_in  = F.relu(self.conv1(x))
-        skip_out = self.bn2(F.relu(self.conv2(skip_in)))
-
-        r = F.relu(self.conv3(skip_in))
-        skip_in = self.bn4(F.relu(self.conv4(r))) + skip_out
-        skip_out  = self.bn5(F.relu(self.conv5(skip_in)))
-
-        r = self.bn6(F.relu(self.conv6(skip_in)))
-        r = self.bn7(F.relu(self.conv7(r))) + skip_out
-        r = F.relu(self.conv8(r))
-        return r
-
 from blurPooling import BlurPool2d
 class EncoderNetworkRes(nn.Module):
     def __init__(self, ch=64, csize=128, down_size=4):
@@ -129,82 +72,87 @@ class EncoderNetworkRes(nn.Module):
         out = self.conv7(self.bn7(out))
         return out
 
-######################################################
-# For GQN
-class GQNTower(nn.Module):
-    def __init__(self, vsize=7, csize=256):
-        super(GQNTower, self).__init__()
-        self.vsize = vsize
-        self.csize = csize
-        self.conv1 = nn.Conv2d(3, 256, kernel_size=2, stride=2)
-        self.conv2 = nn.Conv2d(256, 256, kernel_size=2, stride=2)
-        self.conv3 = nn.Conv2d(256, 128, kernel_size=3, stride=1, padding=1)
-        self.conv4 = nn.Conv2d(128, 256, kernel_size=2, stride=2)
-        self.conv5 = nn.Conv2d(256+vsize, 256, kernel_size=3, stride=1, padding=1)
-        self.conv6 = nn.Conv2d(256+vsize, 128, kernel_size=3, stride=1, padding=1)
-        self.conv7 = nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1)
-        self.conv8 = nn.Conv2d(256, csize, kernel_size=1, stride=1)
+class EncoderNetworkSA(nn.Module):
+    def __init__(self, ch=64, csize=128, down_size=4, img_size=(64,64)):
+        super(EncoderNetworkSA, self).__init__()
+        self.img_size = img_size
+        self.conv1 = DoubleConv(3, ch)
+        self.down2 = Down(ch, ch*2) #(64,64)->(32,32)
+        self.down3 = Down(ch*2, ch*4) #(32,32)->(16,16)
+        self.sa4 = SAWrapper(ch*4, int(img_size[0]/down_size))
+        self.conv5 = Conv2d(ch*4, csize, 3, stride=1)
 
-    def forward(self, x, v):
-        # Resisual connection
-        skip_in  = F.relu(self.conv1(x))
-        skip_out = F.relu(self.conv2(skip_in))
+    def forward(self, x):
+        x1 = self.conv1(x)
+        x2 = self.down2(x1)
+        x3 = self.down3(x2) 
+        x3 = self.sa4(x3)
+        x4 = self.conv5(x3)
+        return x4
 
-        r = F.relu(self.conv3(skip_in))
-        r = F.relu(self.conv4(r)) + skip_out
+class DoubleConv(nn.Module):
+    def __init__(self, in_channels, out_channels, mid_channels=None, residual=False):
+        super().__init__()
+        self.residual = residual
+        if not mid_channels:
+            mid_channels = out_channels
+        self.double_conv = nn.Sequential(
+            nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1, bias=False),
+            nn.GroupNorm(1, mid_channels),
+            nn.GELU(),
+            nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.GroupNorm(1, out_channels),
+        )
 
-        # Broadcast
-        v = v.view(v.size(0), self.vsize, 1, 1).repeat(1, 1, r.shape[2], r.shape[3])
-        
-        # Resisual connection
-        # Concatenate
-        skip_in = torch.cat((r, v), dim=1)
-        skip_out  = F.relu(self.conv5(skip_in))
+    def forward(self, x):
+        if self.residual:
+            return F.gelu(x + self.double_conv(x))
+        else:
+            return self.double_conv(x)
 
-        r = F.relu(self.conv6(skip_in))
-        r = F.relu(self.conv7(r)) + skip_out
-        r = F.relu(self.conv8(r))
 
-        return r
+class Down(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.maxpool_conv = nn.Sequential(
+            nn.MaxPool2d(2),
+            DoubleConv(in_channels, in_channels, residual=True),
+            DoubleConv(in_channels, out_channels),
+        )
 
-class GQNTowerBN(nn.Module):
-    def __init__(self, vsize=7, csize=256):
-        super(GQNTowerBN, self).__init__()
-        self.vsize = vsize
-        self.csize = csize
-        self.conv1 = nn.Conv2d(3, 256, kernel_size=2, stride=2)
-        self.conv2 = nn.Conv2d(256, 256, kernel_size=2, stride=2)
-        self.bn2 = nn.BatchNorm2d(256)
-        self.conv3 = nn.Conv2d(256, 128, kernel_size=3, stride=1, padding=1)
-        self.bn3 = nn.BatchNorm2d(128)
-        self.conv4 = nn.Conv2d(128, 256, kernel_size=2, stride=2)
-        self.bn4 = nn.BatchNorm2d(256)
-        self.conv5 = nn.Conv2d(256+vsize, 256, kernel_size=3, stride=1, padding=1)
-        self.bn5 = nn.BatchNorm2d(256)
-        self.conv6 = nn.Conv2d(256+vsize, 128, kernel_size=3, stride=1, padding=1)
-        self.bn6 = nn.BatchNorm2d(128)
-        self.conv7 = nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1)
-        self.bn7 = nn.BatchNorm2d(256)
-        self.conv8 = nn.Conv2d(256, csize, kernel_size=1, stride=1)
+    def forward(self, x):
+        return self.maxpool_conv(x)
 
-    def forward(self, x, v):
-        # Resisual connection
-        skip_in  = F.relu(self.conv1(x))
-        skip_out = self.bn2(F.relu(self.conv2(skip_in)))
+class SelfAttention(nn.Module):
+    def __init__(self, h_size):
+        super(SelfAttention, self).__init__()
+        self.h_size = h_size
+        self.mha = nn.MultiheadAttention(h_size, 4, batch_first=True)
+        self.ln = nn.LayerNorm([h_size])
+        self.ff_self = nn.Sequential(
+            nn.LayerNorm([h_size]),
+            nn.Linear(h_size, h_size),
+            nn.GELU(),
+            nn.Linear(h_size, h_size),
+        )
 
-        r = self.bn3(F.relu(self.conv3(skip_in)))
-        r = self.bn4(F.relu(self.conv4(r))) + skip_out
+    def forward(self, x):
+        x_ln = self.ln(x)
+        attention_value, _ = self.mha(x_ln, x_ln, x_ln)
+        attention_value = attention_value + x
+        attention_value = self.ff_self(attention_value) + attention_value
+        return attention_value
 
-        # Broadcast
-        v = v.view(v.size(0), vsize, 1, 1).repeat(1, 1, 16, 16)
-        
-        # Resisual connection
-        # Concatenate
-        skip_in = torch.cat((r, v), dim=1)
-        skip_out  = self.bn5(F.relu(self.conv5(skip_in)))
 
-        r = self.bn6(F.relu(self.conv6(skip_in)))
-        r = self.bn7(F.relu(self.conv7(r))) + skip_out
-        r = F.relu(self.conv8(r))
+class SAWrapper(nn.Module):
+    def __init__(self, h_size, num_s):
+        super(SAWrapper, self).__init__()
+        self.sa = nn.Sequential(*[SelfAttention(h_size) for _ in range(1)])
+        self.num_s = num_s
+        self.h_size = h_size
 
-        return r
+    def forward(self, x):
+        x = x.view(-1, self.h_size, self.num_s * self.num_s).swapaxes(1, 2)
+        x = self.sa(x)
+        x = x.swapaxes(2, 1).view(-1, self.h_size, self.num_s, self.num_s)
+        return x
