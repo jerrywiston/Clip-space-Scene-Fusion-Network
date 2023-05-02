@@ -45,17 +45,17 @@ class SMN(nn.Module):
             samp_size = self.n_wrd_cells
         self.wcode = torch.rand(samp_size, 3).to(device)
         with torch.no_grad():
-            self.wcode[:,0] = (self.wcode[:,0] * 2 - 1) #* scale[0]
-            self.wcode[:,1] = (self.wcode[:,1] * 2 - 1) #* scale[1]
-            self.wcode[:,2] = (self.wcode[:,2] * 2 - 1) #* scale[2]
+            self.wcode[:,0] = (self.wcode[:,0] * 2 - 1) * scale[0]
+            self.wcode[:,1] = (self.wcode[:,1] * 2 - 1) * scale[1]
+            self.wcode[:,2] = (self.wcode[:,2] * 2 - 1) * scale[2]
         
     def step_observation_encode(self, x, v, view_size=None):
         if view_size is None:
             view_size = self.view_size
         view_cell = self.encoder(x).reshape(-1, self.csize, view_size[0]*view_size[1])
-        #wrd_cell = self.strn(view_cell, v, self.wcode, view_size=view_size)
-        wcode_scale = self.wcode * torch.exp(self.wscale)
-        wrd_cell = self.strn(view_cell, v, wcode_scale, view_size=view_size)
+        wrd_cell = self.strn(view_cell, v, self.wcode, view_size=view_size)
+        #wcode_scale = self.wcode * torch.exp(self.wscale)
+        #wrd_cell = self.strn(view_cell, v, wcode_scale, view_size=view_size)
         return wrd_cell
     
     def step_scene_fusion(self, wrd_cell, n_obs): 
@@ -64,9 +64,9 @@ class SMN(nn.Module):
         return scene_cell
     
     def step_query_view(self, scene_cell, xq, vq):
-        #view_cell_query = self.strn.query(scene_cell, vq, self.wcode)
-        wcode_scale = self.wcode * torch.exp(self.wscale)
-        view_cell_query = self.strn.query(scene_cell, vq, wcode_scale)
+        view_cell_query = self.strn.query(scene_cell, vq, self.wcode)
+        #wcode_scale = self.wcode * torch.exp(self.wscale)
+        #view_cell_query = self.strn.query(scene_cell, vq, wcode_scale)
         
         view_cell_query = torch.sigmoid(view_cell_query) ###
         x_query, kl = self.generator(xq, view_cell_query)
@@ -94,7 +94,7 @@ class SMN(nn.Module):
         view_cell_query = self.strn.query(wrd_cell, vq, view_size=view_size)
         return view_cell_query
 
-    def forward(self, x, v, xq, vq, n_obs=3):
+    def forwardXX(self, x, v, xq, vq, n_obs=3):
         # Move to the coordinate of query view
         with torch.no_grad():
             vq_tile = vq.unsqueeze(1).repeat(1,n_obs,1).reshape(v.shape[0],-1)
@@ -109,11 +109,35 @@ class SMN(nn.Module):
         wrd_cell = self.step_observation_encode(x, v)
         # Scene Fusion
         scene_cell = self.step_scene_fusion(wrd_cell, n_obs)
+
         # Query Image
         x_query, kl, diff_loss = self.step_query_view(scene_cell, xq, vq)
         return x_query, kl, diff_loss
+    
+    def forward(self, x, v, xq, vq, n_obs=3):
+        # Move to the coordinate of query view
+        with torch.no_grad():
+            vq_tile = vq.unsqueeze(1).repeat(1,n_obs,1).reshape(v.shape[0],-1)
+            v[:,3] = v[:,3] - vq_tile[:,3]
+            v[:,7] = v[:,7] - vq_tile[:,7]
+            v[:,11] = v[:,11] - vq_tile[:,11]
+            vq[:,3] = 0
+            vq[:,7] = 0
+            vq[:,11] = 0
 
-    def sample(self, x, v, vq, n_obs=3, steps=None):
+        view_cell = self.encoder(x).reshape(-1, self.csize, self.view_size[0]*self.view_size[1])
+        view_cell_query = self.strn.forward_mat_merge(view_cell, v, vq, self.wcode)
+        
+        view_cell_query = torch.sigmoid(view_cell_query) ###
+        x_query, kl = self.generator(xq, view_cell_query)
+        if self.use_diff:
+            diff_loss = self.dec_diff.get_loss(xq, x_query.detach(), view_cell_query)
+        else:
+            diff_loss = torch.tensor(0.)
+
+        return x_query, kl, diff_loss
+
+    def sampleXX(self, x, v, vq, n_obs=3, steps=None):
         with torch.no_grad():
             vq_tile = vq.unsqueeze(1).repeat(1,n_obs,1).reshape(v.shape[0],-1)
             v[:,3] = v[:,3] - vq_tile[:,3]
@@ -128,6 +152,30 @@ class SMN(nn.Module):
         scene_cell = self.step_scene_fusion(wrd_cell, n_obs)
         # Query Image
         x_query, x_diff = self.step_query_view_sample(scene_cell, vq)
+        return x_query, x_diff
+    
+    def sample(self, x, v, vq, n_obs=3, steps=None):
+        # Move to the coordinate of query view
+        with torch.no_grad():
+            vq_tile = vq.unsqueeze(1).repeat(1,n_obs,1).reshape(v.shape[0],-1)
+            v[:,3] = v[:,3] - vq_tile[:,3]
+            v[:,7] = v[:,7] - vq_tile[:,7]
+            v[:,11] = v[:,11] - vq_tile[:,11]
+            vq[:,3] = 0
+            vq[:,7] = 0
+            vq[:,11] = 0
+
+        view_cell = self.encoder(x).reshape(-1, self.csize, self.view_size[0]*self.view_size[1])
+        view_cell_query = self.strn.forward_mat_merge(view_cell, v, vq, self.wcode)
+        
+        view_cell_query = torch.sigmoid(view_cell_query) ###
+        sample_size = (self.view_size[0]*self.down_size, self.view_size[1]*self.down_size)
+        x_query = self.generator.sample(sample_size, view_cell_query)
+        if self.use_diff:
+            x_diff = self.dec_diff.image_sample(x_query, view_cell_query, view_cell_query.shape[0])
+        else:
+            x_diff = x_query
+
         return x_query, x_diff
 
     def reconstruct(self, x):

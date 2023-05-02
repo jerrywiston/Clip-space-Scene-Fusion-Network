@@ -247,7 +247,7 @@ while(True):
     # ------------ Print Result ------------
     if steps % 100 == 0:
         print("[Ep %s/%s] loss_q: %f| lh_q: %f| kl_q: %f| diff: %f"%(str(steps), str(args.total_steps), rec[0], rec[1], rec[2], rec[3]))
-        print("Scale:", torch.exp(net.wscale))
+        #print("Scale:", torch.exp(net.wscale))
     # ------------ Output Image ------------
     if steps % eval_step == 0:
         ##
@@ -283,7 +283,7 @@ while(True):
         #print("Evaluate Training Data ...")
         #eval_results_train = eval_maze(net, color_data, pose_data, obs_size=6, max_batch=400, shuffle=False)
         print("Evaluate Testing Data ...")
-        eval_results_test = eval_maze(net, color_data_test, pose_data_test, obs_size=6, max_batch=10, shuffle=False)
+        eval_results_test = eval_maze(net, color_data_test, pose_data_test, obs_size=6, max_batch=2, shuffle=False)
         #eval_record.append({"steps":steps, "train":eval_results_train, "test":eval_results_test})
         eval_record.append({"steps":steps, "test":eval_results_test})
         print("Dump evaluation record ...")

@@ -7,7 +7,7 @@ from blurPooling import BlurPool2d
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class MemoryController(nn.Module):
-    def __init__(self, n_wrd_cells, view_size=(16,16), depth_size=6, vsize=12, emb_size=32, csize=128, use_pos_encoding=True):
+    def __init__(self, n_wrd_cells, view_size=(16,16), depth_size=3, vsize=12, emb_size=32, csize=128, use_pos_encoding=False):
         super(MemoryController, self).__init__()
         self.n_wrd_cells = n_wrd_cells
         self.view_size = view_size
@@ -135,6 +135,42 @@ class MemoryController(nn.Module):
         query_view_cell = self.draw_canvas(query_view_cell)
         return query_view_cell
     
+    def forward_mat_merge(self, view_cell, v, vq, wcode, view_size=None, clip_range=3):
+        if view_size is None:
+            view_size = self.view_size
+
+        # View to World Relation Matrix
+        wcode_batch_trans = self.wcode2cam(v, wcode)
+        relation, activation = self.transform(wcode_batch_trans, view_size=view_size)
+
+        distribution = torch.softmax(relation, 2)
+        distribution = distribution.reshape(distribution.shape[0], distribution.shape[1], -1, self.depth_size).sum(3)
+        route_v2w = distribution * activation   # (-1, n_wrd_cells, n_view_cells)
+
+        # World to View Relation Matrix
+        wcode_batch_trans = self.wcode2cam(vq, wcode)
+        relation, activation = self.transform(wcode_batch_trans, view_size=view_size)
+
+        distribution = torch.softmax(relation, 1)
+        route_w2v = distribution * activation   # (-1, n_wrd_cells, n_view_cells)
+        
+        obs_size = int(v.shape[0] / vq.shape[0])
+        #print(v.shape, vq.shape, route_w2v.shape, obs_size)
+
+        route_w2v_tile = route_w2v.unsqueeze(1).repeat(1,obs_size,1,1).reshape(-1, route_w2v.shape[1], route_w2v.shape[2])
+
+        # Matrix Merge
+        #print(route_v2w.shape, route_w2v_tile.shape)
+        route = route_v2w.permute(0,2,1).matmul(route_w2v_tile)
+        query_view_cell = torch.bmm(view_cell, route)
+        # Fusion
+        query_view_cell = query_view_cell.reshape(vq.shape[0], -1, query_view_cell.shape[1], query_view_cell.shape[2]).sum(1)
+        #print(query_view_cell.shape)
+
+        query_view_cell = query_view_cell.reshape(-1, self.csize, view_size[0], view_size[1], self.depth_size)
+        query_view_cell = self.draw_canvas(query_view_cell)
+        return query_view_cell
+        
     def draw_canvas(self, query_view_cell, render_layers=-1):
         if render_layers == -1:
             depth_size = query_view_cell.shape[-1]
