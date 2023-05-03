@@ -247,7 +247,7 @@ while(True):
     # ------------ Print Result ------------
     if steps % 100 == 0:
         print("[Ep %s/%s] loss_q: %f| lh_q: %f| kl_q: %f| diff: %f"%(str(steps), str(args.total_steps), rec[0], rec[1], rec[2], rec[3]))
-        #print("Scale:", torch.exp(net.wscale))
+        print("Scale:", torch.exp(net.wscale))
     # ------------ Output Image ------------
     if steps % eval_step == 0:
         ##

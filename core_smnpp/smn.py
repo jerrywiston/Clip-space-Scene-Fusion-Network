@@ -20,7 +20,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Deterministic
 class SMN(nn.Module):
-    def __init__(self, n_wrd_cells=2000, view_size=(16,16), csize=128, ch=64, vsize=12, draw_layers=6, down_size=4, use_diff=True, share_core=False):
+    def __init__(self, n_wrd_cells=2000, view_size=(16,16), csize=128, ch=64, vsize=12, draw_layers=6, down_size=4, use_diff=True, share_core=False, optimize_scale=True):
         super(SMN, self).__init__()
         self.n_wrd_cells = n_wrd_cells
         self.view_size = view_size
@@ -30,6 +30,7 @@ class SMN(nn.Module):
         self.down_size = down_size
         self.draw_layers = draw_layers
         self.use_diff = use_diff
+        self.optimize_scale = optimize_scale
 
         #self.encoder = encoder.EncoderNetworkRes(ch, csize, down_size).to(device)
         self.encoder = encoder.EncoderNetworkSA(ch, csize, down_size, (view_size[0]*down_size, view_size[1]*down_size)).to(device)
@@ -53,9 +54,12 @@ class SMN(nn.Module):
         if view_size is None:
             view_size = self.view_size
         view_cell = self.encoder(x).reshape(-1, self.csize, view_size[0]*view_size[1])
-        wrd_cell = self.strn(view_cell, v, self.wcode, view_size=view_size)
-        #wcode_scale = self.wcode * torch.exp(self.wscale)
-        #wrd_cell = self.strn(view_cell, v, wcode_scale, view_size=view_size)
+        if self.optimize_scale:
+            wcode_scale = self.wcode * torch.exp(self.wscale)
+            wrd_cell = self.strn(view_cell, v, wcode_scale, view_size=view_size)
+        else:
+            wrd_cell = self.strn(view_cell, v, self.wcode, view_size=view_size)
+        
         return wrd_cell
     
     def step_scene_fusion(self, wrd_cell, n_obs): 
@@ -64,9 +68,11 @@ class SMN(nn.Module):
         return scene_cell
     
     def step_query_view(self, scene_cell, xq, vq):
-        view_cell_query = self.strn.query(scene_cell, vq, self.wcode)
-        #wcode_scale = self.wcode * torch.exp(self.wscale)
-        #view_cell_query = self.strn.query(scene_cell, vq, wcode_scale)
+        if self.optimize_scale:
+            wcode_scale = self.wcode * torch.exp(self.wscale)
+            view_cell_query = self.strn.query(scene_cell, vq, wcode_scale)
+        else:
+            view_cell_query = self.strn.query(scene_cell, vq, self.wcode)
         
         view_cell_query = torch.sigmoid(view_cell_query) ###
         x_query, kl = self.generator(xq, view_cell_query)
@@ -126,7 +132,11 @@ class SMN(nn.Module):
             vq[:,11] = 0
 
         view_cell = self.encoder(x).reshape(-1, self.csize, self.view_size[0]*self.view_size[1])
-        view_cell_query = self.strn.forward_mat_merge(view_cell, v, vq, self.wcode)
+        if self.optimize_scale:
+            wcode_scale = self.wcode * torch.exp(self.wscale)
+            view_cell_query = self.strn.forward_mat_merge(view_cell, v, vq, wcode_scale)
+        else:
+            view_cell_query = self.strn.forward_mat_merge(view_cell, v, vq, self.wcode)
         
         view_cell_query = torch.sigmoid(view_cell_query) ###
         x_query, kl = self.generator(xq, view_cell_query)
@@ -166,7 +176,11 @@ class SMN(nn.Module):
             vq[:,11] = 0
 
         view_cell = self.encoder(x).reshape(-1, self.csize, self.view_size[0]*self.view_size[1])
-        view_cell_query = self.strn.forward_mat_merge(view_cell, v, vq, self.wcode)
+        if self.optimize_scale:
+            wcode_scale = self.wcode * torch.exp(self.wscale)
+            view_cell_query = self.strn.forward_mat_merge(view_cell, v, vq, wcode_scale)
+        else:
+            view_cell_query = self.strn.forward_mat_merge(view_cell, v, vq, self.wcode)
         
         view_cell_query = torch.sigmoid(view_cell_query) ###
         sample_size = (self.view_size[0]*self.down_size, self.view_size[1]*self.down_size)
