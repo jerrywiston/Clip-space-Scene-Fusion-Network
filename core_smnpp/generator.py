@@ -75,8 +75,27 @@ class GeneratorNetwork(nn.Module):
         self.observation_density = Conv2d(h_dim, x_dim, kernel_size=1, stride=1, padding=0)
 
         # Up/down-sampling primitives
-        self.upsample   = nn.ConvTranspose2d(h_dim, h_dim, kernel_size=self.scale, stride=self.scale, padding=0, bias=False)
+        #self.upsample   = nn.ConvTranspose2d(h_dim, h_dim, kernel_size=self.scale, stride=self.scale, padding=0, bias=False)
         self.downsample = Conv2d(x_dim, x_dim, kernel_size=self.scale, stride=self.scale, padding=0, bias=False)
+
+        self.upsample = nn.Sequential(
+            Conv2d(h_dim, h_dim, 3, stride=1),
+            nn.LeakyReLU(),
+            nn.Upsample(scale_factor=2, mode='nearest'),
+            Conv2d(h_dim, h_dim, 3, stride=1),
+            nn.LeakyReLU(),
+            nn.Upsample(scale_factor=2, mode='nearest'),
+            Conv2d(h_dim, h_dim, 3, stride=1),
+        )
+
+        #self.downsample = nn.Sequential(
+        #    Conv2d(x_dim, x_dim, 3, stride=2),
+        #    nn.LeakyReLU(),
+        #    Conv2d(x_dim, x_dim, 3, stride=1),
+        #    nn.LeakyReLU(),
+        #    nn.BatchNorm2d(x_dim),
+        #    Conv2d(x_dim, x_dim, 3, stride=2),
+        #)
 
     def forward(self, x, r):
         """

@@ -46,9 +46,13 @@ class SMN(nn.Module):
             samp_size = self.n_wrd_cells
         self.wcode = torch.rand(samp_size, 3).to(device)
         with torch.no_grad():
-            self.wcode[:,0] = (self.wcode[:,0] * 2 - 1) * scale[0]
-            self.wcode[:,1] = (self.wcode[:,1] * 2 - 1) * scale[1]
-            self.wcode[:,2] = (self.wcode[:,2] * 2 - 1) * scale[2]
+            self.wcode[:,0] = (self.wcode[:,0] * 2 - 1) 
+            self.wcode[:,1] = (self.wcode[:,1] * 2 - 1) 
+            self.wcode[:,2] = (self.wcode[:,2] * 2 - 1) 
+            if not self.optimize_scale:
+                self.wcode[:,0] = self.wcode[:,0] * scale[0]
+                self.wcode[:,1] = self.wcode[:,1] * scale[1]
+                self.wcode[:,2] = self.wcode[:,2] * scale[2]
         
     def step_observation_encode(self, x, v, view_size=None):
         if view_size is None:
